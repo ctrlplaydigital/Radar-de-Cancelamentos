@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar de Cancelamentos</title>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f5f1;--card:#fff;--tx:#1d2430;--mu:#6b7482;--bd:#e3e0d8;--ac:#c2410c;--ok:#0f766e;--bar:#e9a77f}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#14171c;--card:#1e232b;--tx:#e8eaee;--mu:#9aa3b0;--bd:#2c333d;--ac:#fb923c;--ok:#2dd4bf;--bar:#b4561f}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#14171c;--card:#1e232b;--tx:#e8eaee;--mu:#9aa3b0;--bd:#2c333d;--ac:#fb923c;--ok:#2dd4bf;--bar:#b4561f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:0 0 2px}
+.mu{color:var(--mu);font-size:13px}
+.drop{display:block;margin:16px 0;padding:22px;border:2px dashed var(--bd);border-radius:14px;text-align:center;cursor:pointer;background:var(--card)}
+.drop.on{border-color:var(--ac)}.drop b{color:var(--ac)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.k{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.k strong{display:block;font-size:26px;line-height:1.1;color:var(--ac)}.k span{font-size:12px;color:var(--mu)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;margin-top:12px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;min-width:0}
+.c.full{grid-column:1/-1}
+.row{display:grid;grid-template-columns:minmax(80px,1.3fr) 2fr 26px 36px 62px;gap:6px;align-items:center;margin-top:7px;font-size:13px}
+.row .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr{height:10px;background:var(--bd);border-radius:6px;overflow:hidden}.tr i{display:block;height:100%;background:var(--bar);border-radius:6px}
+.row b{text-align:right}.row em{font-style:normal;color:var(--mu);text-align:right}.row small{color:var(--mu);text-align:right;font-size:11px}
+.ins{margin:0;padding-left:18px}.ins li{margin:6px 0}
+h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu);margin:22px 0 0}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--bd);white-space:nowrap}th{color:var(--mu);font-weight:600;cursor:pointer}
+input[type=search]{padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%;max-width:280px;margin:8px 0}
+.err{color:#b91c1c;margin-top:8px}.btn{float:right;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:6px 12px;cursor:pointer}
+.low{color:var(--ac);font-weight:600}
+.fl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin:12px 0}.fl label{font-size:11px;color:var(--mu);display:flex;flex-direction:column;gap:3px}.fl select,.fl input{padding:7px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-size:13px;max-width:none;margin:0;width:100%}.fl .act{display:flex;gap:8px;align-items:end;font-size:13px;flex-wrap:wrap}.fl .btn{float:none}
+@media print{.drop,.btn,input{display:none}.c{break-inside:avoid}}
+</style></head><body><div class="w">
+<button class="btn" onclick="print()">Imprimir / PDF</button>
+<h1>Radar de Cancelamentos</h1>
+<div class="mu">Envie a planilha de alunos que cancelaram e o painel mostra onde está o gargalo. Todo o processamento acontece no seu navegador; nada é enviado a servidor algum.</div>
+<label class="drop" id="dz"><input id="f" type="file" accept=".csv,.xlsx,.xls" hidden><b>Clique ou arraste a planilha aqui</b><br><span class="mu">CSV exportado do Google Sheets (ou .xlsx), com as mesmas colunas de sempre</span></label>
+<div id="err" class="err"></div><div id="out"></div></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function parseCSV(t){t=t.replace(/^\uFEFF/,'');const h=t.split(/\r?\n/)[0],dl=(h.match(/;/g)||[]).length>(h.match(/,/g)||[]).length?';':',',rows=[];let r=[],f='',q=false;
+for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+else if(c=='"')q=true;else if(c==dl){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);f='';rows.push(r);r=[]}else f+=c}
+if(f!==''||r.length){r.push(f);rows.push(r)}return rows}
+const num=v=>{v=String(v==null?'':v).replace('%','').replace(',','.').trim();return v===''?NaN:parseFloat(v)};
+const avg=a=>{a=a.filter(x=>!isNaN(x));return a.length?a.reduce((x,y)=>x+y,0)/a.length:NaN};
+const med=a=>{a=a.filter(x=>!isNaN(x)).sort((x,y)=>x-y);if(!a.length)return NaN;const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2};
+const pc=(n,t)=>t?Math.round(n/t*100):0,rd=x=>isNaN(x)?'–':Math.round(x);
+function load(text){const rows=parseCSV(text).filter(r=>r.some(x=>x.trim()));const H=rows[0].map(x=>x.trim());
+if(!H.includes('Aluno')||!H.includes('Freq. total'))throw new Error('Não encontrei as colunas "Aluno" e "Freq. total". Confira se é a planilha correta.');
+const seen=new Set();let dup=0;const S=[];const now=Date.now();
+for(const r of rows.slice(1)){const o={};H.forEach((h,i)=>{if(!(h in o))o[h]=(r[i]||'').trim()});
+const nm=o['Aluno'];if(!nm||nm==='Aluno'){if(nm==='Aluno')dup++;continue}const key=nm.toLowerCase().replace(/\s+/g,' ');if(seen.has(key)){dup++;continue}seen.add(key);
+let acc=null;const a=o['Último acesso ao portal'];if(/nunca/i.test(a))acc='nunca';else{const m=a.match(/(\d+)\/(\d+)\/(\d+)/);if(m)acc=Math.floor((now-new Date(+m[3],+m[2]-1,+m[1]))/864e5)}
+S.push({nome:nm,idade:num(o['Idade']),acc,fq:num(o['Freq. total']),aulas:num(o['Aulas totais'])||0,pres:num(o['Presenças totais']),fs:num(o['Faltas seguidas atuais']),ms:num(o['Maior sequência de faltas']),mods:num(o['Módulos feitos']),
+prof:o['Último professor'],hor:o['Último horário'],turno:o['Último turno'],dia:o['Último dia da semana'],cat:o['Última categoria'],trend:o['Tendência']||'',
+tp:o['Trocou de professor']==='Sim',th:o['Trocou de horário (penúltimo → último módulo)']==='Sim',td:o['Trocou de dia da semana (penúltimo → último módulo)']==='Sim',tc:o['Trocou de categoria']==='Sim',
+mes:o['Último mês de início'],mod:o['Último módulo feito'],f1:num(o['Freq. primeiro módulo'])})}
+return{S,dup}}
+function grp(arr,fn,order){const m=new Map();arr.forEach(s=>{const k=fn(s);if(k==null||k===''||(typeof k=='number'&&isNaN(k)))return;(m.get(k)||m.set(k,[]).get(k)).push(s)});
+const mk=(k,v=[])=>({k,n:v.length,f:avg(v.map(x=>x.fq))});
+return order?order.map(k=>mk(k,m.get(k))):[...m].map(([k,v])=>mk(k,v)).sort((x,y)=>y.n-x.n)}
+function bars(a,t,fq=true){const mx=Math.max(...a.map(x=>x.n),1);return a.map(x=>`<div class="row"><span class="lb" title="${esc(x.k)}">${esc(x.k)}</span><div class="tr"><i style="width:${x.n/mx*100}%"></i></div><b>${x.n}</b><em>${pc(x.n,t)}%</em><small>${fq&&!isNaN(x.f)?'freq '+rd(x.f)+'%':''}</small></div>`).join('')}
+const card=(t,s,h,full)=>`<div class="c${full?' full':''}"><h2>${t}</h2><div class="mu">${s||''}</div>${h}</div>`;
+const band=(v,cuts,labels)=>{if(v==null||isNaN(v))return null;for(let i=0;i<cuts.length;i++)if(v<=cuts[i])return labels[i];return labels[cuts.length]};
+const DIAS=['SEG','TER','QUA','QUI','SEX','SÁB','DOM'],MESES=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+const tmin=h=>{const m=h.match(/(\d+):(\d+)/);return m?+m[1]*60+ +m[2]:0};
+function analyze(ALL,dup,full,act){const T=ALL.length,S=ALL.filter(s=>s.aulas>0),n=S.length,N0=T-n;
+if(!T)return{top:'<div class="c">Nenhum aluno com esses filtros.</div>',bot:'',rows:[]};
+const sig=[['Frequência total abaixo de 70%',s=>s.fq<70],['Já teve 3+ faltas seguidas em algum momento',s=>s.ms>=3],['Estava com 3+ faltas seguidas ao cancelar',s=>s.fs>=3],['Tendência de frequência em queda',s=>/caindo/i.test(s.trend)],
+['Nunca acessou o portal',s=>s.acc==='nunca'],['Sem acessar o portal há 90+ dias',s=>typeof s.acc=='number'&&s.acc>=90],['Cancelou no 1º módulo',s=>s.mods<=1],['Frequência do 1º módulo abaixo de 70%',s=>s.f1<70],
+['Trocou de professor',s=>s.tp],['Trocou de horário',s=>s.th],['Trocou de dia da semana',s=>s.td],['Trocou de categoria',s=>s.tc]].map(([k,f])=>({k,n:S.filter(f).length,f:NaN})).sort((a,b)=>b.n-a.n);
+const low=S.filter(s=>s.fq<70).length,nunca=S.filter(s=>s.acc==='nunca').length,m1=S.filter(s=>s.mods<=1).length;
+const G=(fn,o)=>grp(S,fn,o);
+const prof=G(s=>s.prof),slot=G(s=>s.dia&&s.hor?s.dia+' '+s.hor:null).slice(0,8),cat=G(s=>s.cat),
+hors=[...new Set(S.map(s=>s.hor).filter(Boolean))].sort((a,b)=>tmin(a)-tmin(b)),
+aul=G(s=>band(s.aulas,[8,16,32,64],['1–8 aulas','9–16','17–32','33–64','65+']),['1–8 aulas','9–16','17–32','33–64','65+']),
+frq=G(s=>band(s.fq,[29.99,49.99,69.99,84.99],['0–29%','30–49%','50–69%','70–84%','85–100%']),['0–29%','30–49%','50–69%','70–84%','85–100%']),
+fsq=G(s=>band(s.fs,[0,2,4,7],['0','1–2','3–4','5–7','8+']),['0','1–2','3–4','5–7','8+']),
+ida=G(s=>band(s.idade,[6,9,12,15,18],['até 6','7–9','10–12','13–15','16–18','19+']),['até 6','7–9','10–12','13–15','16–18','19+']),
+rec=G(s=>s.acc==='nunca'?'Nunca acessou':s.acc==null?null:s.acc<=30?'Até 30 dias':s.acc<=90?'31–90 dias':s.acc<=180?'91–180 dias':'Mais de 180 dias',['Nunca acessou','Até 30 dias','31–90 dias','91–180 dias','Mais de 180 dias']);
+const tr=[];[['professor',s=>s.tp],['horário',s=>s.th],['dia',s=>s.td],['categoria',s=>s.tc]].forEach(([l,f])=>[true,false].forEach(v=>{const g=S.filter(s=>f(s)===v);tr.push({k:`Trocou ${l}: ${v?'sim':'não'}`,n:g.length,f:avg(g.map(s=>s.fq))})}));
+const I=[];
+if(N0)I.push(`<b>${N0} aluno(s) (${pc(N0,T)}%)</b> têm 0 aulas registradas: cancelaram antes de começar. É problema de ativação/matrícula, não de retenção em sala. Eles ficam fora dos demais gráficos.`);
+const ma=aul.slice().sort((a,b)=>b.n-a.n)[0];I.push(`Mediana de <b>${rd(med(S.map(s=>s.aulas)))} aulas</b> até cancelar. A faixa mais crítica é <b>${ma.k}</b> (${pc(ma.n,n)}% dos alunos que começaram). ${m1?`<b>${pc(m1,n)}%</b> saíram já no 1º módulo.`:''}`);
+I.push(`<b>${pc(low,n)}%</b> estavam com frequência total abaixo de 70% (mediana geral: ${rd(med(S.map(s=>s.fq)))}%). ${pc(S.filter(s=>s.ms>=3).length,n)}% chegaram a ter 3+ faltas seguidas: esse é um bom gatilho de alerta.`);
+I.push(`<b>${pc(nunca,n)}%</b> nunca acessaram o portal. Quem não entra no portal tende a estar desengajado desde o início.`);
+const tp=prof[0];if(tp)I.push(`Professor com mais cancelamentos: <b>${esc(tp.k)}</b> (${tp.n}, ${pc(tp.n,n)}%). ${(()=>{const w=prof.filter(p=>p.n>=4).sort((a,b)=>a.f-b.f)[0];return w?`Menor frequência média entre alunos (mín. 4 alunos): <b>${esc(w.k)}</b>, ${rd(w.f)}%.`:''})()}`);
+if(slot[0])I.push(`Turma/horário mais crítico: <b>${esc(slot[0].k)}</b> (${slot[0].n} alunos). Categoria líder: <b>${esc(cat[0]?.k||'–')}</b> (${pc(cat[0]?.n||0,n)}%).`);
+const tpS=S.filter(s=>s.tp),tpN=S.filter(s=>!s.tp);if(tpS.length>=3)I.push(`Quem <b>trocou de professor</b> (${tpS.length}) teve frequência média de ${rd(avg(tpS.map(s=>s.fq)))}%, contra ${rd(avg(tpN.map(s=>s.fq)))}% de quem não trocou.`);
+const rows=S.slice().sort((a,b)=>a.fq-b.fq);
+const cmp=act?cmpTable(S,full.filter(s=>s.aulas>0)):'';const top=`<div class="kpis">${[[T,'alunos únicos na planilha'+(dup?` (${dup} linhas repetidas ignoradas)`:'')],[N0,'nunca tiveram aula (0 aulas)'],[rd(avg(S.map(s=>s.fq)))+'%','frequência média'],[pc(low,n)+'%','com freq. abaixo de 70%'],[pc(S.filter(s=>s.pres===0).length,n)+'%','nunca compareceram (0 presenças)'],[pc(nunca,n)+'%','nunca acessaram o portal'],[pc(m1,n)+'%','cancelaram no 1º módulo'],[rd(med(S.map(s=>s.aulas))),'mediana de aulas até cancelar']].map(([a,b])=>`<div class="k"><strong>${a}</strong><span>${b}</span></div>`).join('')}</div>
+${cmp}<div class="grid">${card('Principais achados','Gerados automaticamente a partir dos dados',`<ul class="ins">${I.map(x=>`<li>${x}</li>`).join('')}</ul>`,true)}</div>`;
+const bot=`<div class="grid">${card('Sinais de alerta antes do cancelamento','% dos alunos que começaram e tinham cada sinal. Use como gatilho de acompanhamento.',bars(sig,n,false),true)}</div>
+<h3>Quando e por que saem</h3><div class="grid">
+${card('Aulas feitas até cancelar','Em que ponto da jornada o aluno sai',bars(aul,n))}
+${card('Frequência total','Faixa de frequência ao cancelar',bars(frq,n,false))}
+${card('Faltas seguidas ao cancelar','Quantas aulas seguidas estava faltando',bars(fsq,n))}
+${card('Último acesso ao portal','Há quanto tempo não entrava',bars(rec,n))}</div>
+<h3>Professores, turmas e horários</h3><div class="grid">
+${card('Por professor','Nº de cancelamentos e frequência média dos alunos',bars(prof,n),true)}
+${card('Por dia da semana','',bars(G(s=>s.dia,DIAS.filter(d=>S.some(s=>s.dia===d))),n))}
+${card('Por horário','',bars(G(s=>s.hor,hors),n))}
+${card('Por turno','',bars(G(s=>s.turno,['Manhã','Tarde','Noite']),n))}
+${card('Turmas mais críticas (dia + horário)','Top 8 combinações',bars(slot,n))}</div>
+<h3>Perfil do aluno</h3><div class="grid">
+${card('Por categoria','',bars(cat,n))}${card('Por idade','Sem idade informada: '+S.filter(s=>isNaN(s.idade)).length,bars(ida,n))}
+${card('Por módulo em que parou','',bars(G(s=>s.mod),n))}
+${card('Por mês de início da turma','',bars(G(s=>s.mes,MESES.filter(m=>S.some(s=>s.mes===m))),n))}
+${card('Efeito das trocas','Troca de professor, horário, dia ou categoria vs. frequência média',bars(tr,n))}</div>
+`;
+const hd=['Aluno','Idade','Categoria','Professor','Turma','Freq.','Aulas','Faltas seg.','Portal'];
+const tbl='<tr>'+hd.map(h=>`<th>${h}</th>`).join('')+'</tr>'+rows.slice(0,500).map(s=>`<tr><td>${esc(s.nome)}</td><td>${rd(s.idade)}</td><td>${esc(s.cat)}</td><td>${esc(s.prof)}</td><td>${esc(s.dia+' '+s.hor)}</td><td class="${s.fq<70?'low':''}">${rd(s.fq)}%</td><td>${s.aulas}</td><td>${rd(s.fs)}</td><td>${s.acc==='nunca'?'Nunca':s.acc==null?'–':s.acc+'d'}</td></tr>`).join('');return{top,bot,rows,tbl}}
+const P=f=>a=>pc(a.filter(f).length,a.length);
+const MT=[['Frequência média',a=>avg(a.map(s=>s.fq)),'%'],['Nunca compareceram (0 presenças)',P(s=>s.pres===0),'%'],['Frequência abaixo de 70%',P(s=>s.fq<70),'%'],['Nunca acessaram o portal',P(s=>s.acc==='nunca'),'%'],['3+ faltas seguidas ao cancelar',P(s=>s.fs>=3),'%'],['Trocaram de professor',P(s=>s.tp),'%'],['Trocaram de horário',P(s=>s.th),'%'],['Trocaram de dia',P(s=>s.td),'%'],['Trocaram de categoria',P(s=>s.tc),'%'],['Saíram no 1º módulo',P(s=>s.mods<=1),'%'],['Mediana de aulas até cancelar',a=>med(a.map(s=>s.aulas)),'']];
+function cmpTable(a,g){return card('Grupo filtrado vs. geral',`${a.length} alunos que começaram, contra ${g.length} no geral. Diferenças de 10+ pontos aparecem em destaque.`,`<div class="tw"><table><tr><th>Métrica</th><th>Filtro</th><th>Geral</th><th>Diferença</th></tr>${MT.map(([l,f,u])=>{const x=f(a),y=f(g),d=x-y,hl=u&&Math.abs(d)>=10;return`<tr><td>${l}</td><td><b>${rd(x)}${u}</b></td><td>${rd(y)}${u}</td><td class="${hl?'low':''}">${isNaN(d)?'–':(d>0?'+':'')+Math.round(d)+(u?' p.p.':'')}</td></tr>`}).join('')}</table></div>`,true)}
+const AB=['até 6','7–9','10–12','13–15','16–18','19+'],FB=['0–29%','30–49%','50–69%','70–84%','85–100%'],AU=['1–8 aulas','9–16','17–32','33–64','65+'],FS=['0','1–2','3–4','5–7','8+'],RC=['Nunca acessou','Até 30 dias','31–90 dias','91–180 dias','Mais de 180 dias'],SN=['Sim','Não'];
+const sn=(s,v)=>s.aulas>0?(v?'Sim':'Não'):null;
+const FD=[['Professor',s=>s.prof],['Categoria',s=>s.cat],['Dia da semana',s=>s.dia,DIAS],['Horário',s=>s.hor,'t'],['Turno',s=>s.turno,['Manhã','Tarde','Noite']],['Idade',s=>band(s.idade,[6,9,12,15,18],AB),AB],['Módulo em que parou',s=>s.mod],['Mês de início',s=>s.mes,MESES],['Trocou de professor',s=>sn(s,s.tp),SN],['Trocou de horário',s=>sn(s,s.th),SN],['Trocou de dia',s=>sn(s,s.td),SN],['Trocou de categoria',s=>sn(s,s.tc),SN],['Frequência total',s=>s.aulas>0?band(s.fq,[29.99,49.99,69.99,84.99],FB):null,FB],['Aulas feitas',s=>s.aulas>0?band(s.aulas,[8,16,32,64],AU):null,AU],['Faltas seguidas',s=>s.aulas>0?band(s.fs,[0,2,4,7],FS):null,FS],['Último acesso ao portal',s=>s.acc==='nunca'?RC[0]:s.acc==null?null:s.acc<=30?RC[1]:s.acc<=90?RC[2]:s.acc<=180?RC[3]:RC[4],RC]];
+let DATA,FV={},Q='';
+function render(d){if(!d.S.length)throw new Error('Nenhum aluno encontrado na planilha.');DATA=d;FV={};Q='';
+const opts=FD.map(([l,f,o],i)=>{let v=[...new Set(d.S.map(f).filter(x=>x!=null&&x!==''))];v=Array.isArray(o)?o.filter(x=>v.includes(x)):o==='t'?v.sort((a,b)=>tmin(a)-tmin(b)):v.sort((a,b)=>String(a).localeCompare(b));return`<label>${l}<select data-i="${i}"><option value="">Todos</option>${v.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>`}).join('');
+$('#out').innerHTML=`<div class="fl"><label>Buscar<input type="search" id="q" placeholder="Nome ou professor…"></label>${opts}<div class="act"><span id="cnt"></span><button class="btn" id="clr">Limpar filtros</button></div></div><div id="top"></div><h3>Alunos (menor frequência primeiro)</h3><div class="c tw"><table id="tb"></table></div><div id="bot"></div>`;
+document.querySelectorAll('.fl select').forEach(e=>e.onchange=()=>{FV[e.dataset.i]=e.value;update()});
+$('#q').oninput=e=>{Q=e.target.value.toLowerCase();update()};
+$('#clr').onclick=()=>{FV={};Q='';document.querySelectorAll('.fl select').forEach(e=>e.value='');$('#q').value='';update()};update()}
+function update(){const act=Object.values(FV).some(x=>x)||Q,F=DATA.S.filter(s=>FD.every(([l,f],i)=>!FV[i]||String(f(s))===FV[i])&&(!Q||(s.nome+' '+s.prof).toLowerCase().includes(Q)));
+const r=analyze(F,act?0:DATA.dup,DATA.S,act);$('#top').innerHTML=r.top;$('#tb').innerHTML=r.tbl||'';$('#bot').innerHTML=r.bot;$('#cnt').textContent=F.length+' de '+DATA.S.length+' alunos'}
+async function go(file){$('#err').textContent='';try{let t;if(/\.xls/i.test(file.name)){if(!window.XLSX)throw new Error('Leitor de Excel ainda carregando; tente de novo ou envie em CSV.');const wb=XLSX.read(await file.arrayBuffer());t=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]])}else t=await file.text();render(load(t))}catch(e){$('#err').textContent=e.message}}
+const dz=$('#dz');$('#f').onchange=e=>e.target.files[0]&&go(e.target.files[0]);
+['dragover','dragenter'].forEach(v=>dz.addEventListener(v,e=>{e.preventDefault();dz.classList.add('on')}));
+['dragleave','drop'].forEach(v=>dz.addEventListener(v,e=>{e.preventDefault();dz.classList.remove('on')}));
+dz.addEventListener('drop',e=>e.dataTransfer.files[0]&&go(e.dataTransfer.files[0]));
+</script></body></html>
